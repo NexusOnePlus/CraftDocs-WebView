@@ -11,39 +11,52 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
 class OfflineEnabledWebViewClient(private val context: Context) : WebViewClientCompat() {
+    private var forceReload = false
+
+    fun setForceReload(force: Boolean){
+        forceReload = force
+    }
+
+    fun isNetworkAvailable(): Boolean {
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = connectivityManager.activeNetwork
+        val capabilities = connectivityManager.getNetworkCapabilities(network)
+        return capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+    }
 
     override fun shouldInterceptRequest(
         view: WebView,
         request: WebResourceRequest
     ): WebResourceResponse? {
         return try {
-            loadFromCache(request.url.toString())?.let { return it }
+            if (forceReload && isNetworkAvailable()) {
+                return loadFromNetwork(request)
+            }
+
+            val cachedResponse = loadFromCache(request.url.toString())
+
+            if (cachedResponse != null) {
+                if (isNetworkAvailable() && !forceReload) {
+                    Thread {
+                        try {
+                            loadFromNetwork(request)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }.start()
+                }
+                return cachedResponse
+            }
 
             if (isNetworkAvailable()) {
-                val response = makeHttpRequest(request)
-
-                response?.let {
-                    if (it.statusCode == 200) {
-                        val responseData = it.data.readBytes()
-                        saveToCache(request.url.toString(), responseData, it.mimeType)
-
-                        return WebResourceResponse(
-                            it.mimeType,
-                            it.encoding,
-                            ByteArrayInputStream(responseData)
-                        ).apply {
-                            setStatusCodeAndReasonPhrase(it.statusCode, it.reasonPhrase)
-                            it.responseHeaders?.let { setResponseHeaders(it) }
-                        }
-                    }
-                }
+                return loadFromNetwork(request)
             }
-            loadFromCache(request.url.toString())
+
+            null
 
         } catch (e: Exception) {
             e.printStackTrace()
@@ -51,11 +64,25 @@ class OfflineEnabledWebViewClient(private val context: Context) : WebViewClientC
         }
     }
 
-    private fun isNetworkAvailable(): Boolean {
-        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val network = connectivityManager.activeNetwork
-        val capabilities = connectivityManager.getNetworkCapabilities(network)
-        return capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+    private fun loadFromNetwork(request: WebResourceRequest): WebResourceResponse? {
+        val response = makeHttpRequest(request)
+
+        response?.let {
+            if (it.statusCode == 200) {
+                val responseData = it.data.readBytes()
+                saveToCache(request.url.toString(), responseData, it.mimeType)
+
+                return WebResourceResponse(
+                    it.mimeType,
+                    it.encoding,
+                    ByteArrayInputStream(responseData)
+                ).apply {
+                    setStatusCodeAndReasonPhrase(it.statusCode, it.reasonPhrase)
+                    it.responseHeaders?.let { setResponseHeaders(it) }
+                }
+            }
+        }
+        return null
     }
 
     private fun loadFromCache(url: String): WebResourceResponse? {
@@ -95,6 +122,9 @@ class OfflineEnabledWebViewClient(private val context: Context) : WebViewClientC
     private fun makeHttpRequest(request: WebResourceRequest): WebResourceResponse? {
         return try {
             val connection = URL(request.url.toString()).openConnection() as HttpURLConnection
+            connection.useCaches = false
+            connection.setRequestProperty("Cache-Control", "no-cache")
+
             request.requestHeaders.forEach { (key, value) ->
                 connection.setRequestProperty(key, value)
             }

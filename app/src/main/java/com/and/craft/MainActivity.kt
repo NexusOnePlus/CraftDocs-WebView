@@ -5,11 +5,13 @@ import android.os.Bundle
 import android.webkit.WebView
 import android.webkit.WebSettings
 import androidx.appcompat.app.AppCompatActivity
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import java.util.Objects
 
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private lateinit var webViewClient: OfflineEnabledWebViewClient
+    private lateinit var swipeRefreshLayout: SwipeRefreshLayout
     private val sharedPreferences by lazy { getSharedPreferences("webview_prefs", Context.MODE_PRIVATE) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -17,6 +19,22 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         Objects.requireNonNull(supportActionBar)?.hide()
         setupWebView()
+        setupSwipeRefresh()
+    }
+
+    private fun setupSwipeRefresh () {
+        swipeRefreshLayout = findViewById(R.id.swipeRefresh)
+        swipeRefreshLayout.setOnRefreshListener {
+            if (webViewClient.isNetworkAvailable()) {
+                webView.clearCache(true)
+                webViewClient.setForceReload(true)
+                webView.reload()
+            }
+
+            swipeRefreshLayout.postDelayed({
+                webViewClient.setForceReload(false)
+                swipeRefreshLayout.isRefreshing = false
+            }, 1000)        }
     }
 
     private fun setupWebView() {

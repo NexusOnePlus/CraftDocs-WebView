@@ -45,4 +45,5 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     implementation("androidx.webkit:webkit:1.6.1")
     implementation("androidx.work:work-runtime-ktx:2.8.1")
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
 }
