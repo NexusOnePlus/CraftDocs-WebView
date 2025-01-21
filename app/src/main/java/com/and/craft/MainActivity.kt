@@ -8,6 +8,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import java.util.Objects
 
+
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private lateinit var webViewClient: OfflineEnabledWebViewClient
@@ -39,23 +40,32 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupWebView() {
         webView = findViewById(R.id.webView)
+        webViewClient = OfflineEnabledWebViewClient(this)
 
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
             databaseEnabled = true
             allowFileAccess = true
-            cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
+            cacheMode = if (webViewClient.isNetworkAvailable()) {
+                WebSettings.LOAD_NO_CACHE
+            } else {
+                WebSettings.LOAD_CACHE_ELSE_NETWORK
+            }
             loadsImagesAutomatically = true
         }
 
-        webViewClient = OfflineEnabledWebViewClient(this)
         webView.webViewClient = webViewClient
+        webViewClient.setupNetworkCallback(webView)
 
         val lastVisitedUrl = sharedPreferences.getString("last_visited_url", "https://docs.craft.do/")
         webView.loadUrl(lastVisitedUrl ?: "https://docs.craft.do/")
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        webViewClient.cleanup()
+    }
     override fun onBackPressed() {
         if (webView.url == "https://docs.craft.do/recents") {
             super.onBackPressed()

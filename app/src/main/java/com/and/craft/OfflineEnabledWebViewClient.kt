@@ -2,9 +2,12 @@ package com.and.craft
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
 import android.webkit.WebView
 import androidx.webkit.WebViewClientCompat
 import java.io.ByteArrayInputStream
@@ -16,11 +19,49 @@ import java.net.URL
 
 class OfflineEnabledWebViewClient(private val context: Context) : WebViewClientCompat() {
     private var forceReload = false
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var webView: WebView? = null
 
     fun setForceReload(force: Boolean){
         forceReload = force
     }
 
+    fun setupNetworkCallback(webView: WebView) {
+        this.webView = webView
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+        networkCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                super.onAvailable(network)
+                webView.post {
+                    webView.clearCache(true)
+                    webView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+                    webView.reload()
+                }
+            }
+
+            override fun onLost(network: Network) {
+                super.onLost(network)
+                webView.post {
+                    webView.settings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
+                }
+            }
+        }
+
+        val networkRequest = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+
+        connectivityManager.registerNetworkCallback(networkRequest, networkCallback!!)
+    }
+    fun cleanup() {
+        networkCallback?.let {
+            val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            connectivityManager.unregisterNetworkCallback(it)
+        }
+        networkCallback = null
+        webView = null
+    }
     fun isNetworkAvailable(): Boolean {
         val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val network = connectivityManager.activeNetwork
@@ -33,31 +74,11 @@ class OfflineEnabledWebViewClient(private val context: Context) : WebViewClientC
         request: WebResourceRequest
     ): WebResourceResponse? {
         return try {
-            if (forceReload && isNetworkAvailable()) {
-                return loadFromNetwork(request)
-            }
-
-            val cachedResponse = loadFromCache(request.url.toString())
-
-            if (cachedResponse != null) {
-                if (isNetworkAvailable() && !forceReload) {
-                    Thread {
-                        try {
-                            loadFromNetwork(request)
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }.start()
-                }
-                return cachedResponse
-            }
-
             if (isNetworkAvailable()) {
                 return loadFromNetwork(request)
             }
 
-            null
-
+           return loadFromCache(request.url.toString())
         } catch (e: Exception) {
             e.printStackTrace()
             loadFromCache(request.url.toString())
