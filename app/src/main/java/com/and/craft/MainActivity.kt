@@ -58,8 +58,8 @@ class MainActivity : AppCompatActivity() {
         webView.webViewClient = webViewClient
         webViewClient.setupNetworkCallback(webView)
 
-        val lastVisitedUrl = sharedPreferences.getString("last_visited_url", "https://docs.craft.do/")
-        webView.loadUrl(lastVisitedUrl ?: "https://docs.craft.do/")
+        val lastVisitedUrl = sharedPreferences.getString("last_visited_url", "https://docs.craft.do/recents")
+        webView.loadUrl(lastVisitedUrl ?: "https://docs.craft.do/recents")
     }
 
     override fun onDestroy() {
